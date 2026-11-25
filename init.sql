@@ -1,4 +1,4 @@
-
+CREATE DATABASE registration_db;
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
