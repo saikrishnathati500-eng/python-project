@@ -1,73 +1,87 @@
 
+import os
+import bcrypt
+
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, flash
 from database import get_db_connection
-import bcrypt
-import os
+
+load_dotenv()
 
 app = Flask(__name__)
 
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
 
-@app.route("/", methods=["GET", "POST"])
-def register():
-
-    if request.method == "POST":
-
-        username = request.form["username"].strip()
-        email = request.form["email"].strip()
-        password = request.form["password"]
-
-        if not username or not email or not password:
-            flash("All fields are required!")
-            return redirect("/")
-
-        hashed_password = bcrypt.hashpw(
-            password.encode("utf-8"),
-            bcrypt.gensalt()
-        ).decode("utf-8")
-
-        db = None
-        cursor = None
-
-        try:
-            db = get_db_connection()
-            cursor = db.cursor()
-
-            query = """
-                INSERT INTO users (username, email, password)
-                VALUES (%s, %s, %s)
-            """
-
-            cursor.execute(
-                query,
-                (username, email, hashed_password)
-            )
-
-            db.commit()
-
-            flash("Registration successful!")
-
-        except Exception as error:
-
-            if db:
-                db.rollback()
-
-            print("Database error:", error)
-            flash("Registration failed!")
-
-        finally:
-
-            if cursor:
-                cursor.close()
-
-            if db:
-                db.close()
-
-        return redirect("/")
-
+# GET request: Display registration page
+@app.route("/", methods=["GET"])
+def home():
     return render_template("index.html")
 
 
+# POST request: Receive registration details
+@app.route("/register", methods=["POST"])
+def register():
+
+    username = request.form.get("username", "").strip()
+    email = request.form.get("email", "").strip()
+    password = request.form.get("password", "")
+
+    if not username or not email or not password:
+        flash("All fields are required.", "error")
+        return redirect("/")
+
+    if len(password.encode("utf-8")) > 72:
+        flash("Password must not exceed 72 bytes.", "error")
+        return redirect("/")
+
+    hashed_password = bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
+
+    conn = None
+    cursor = None
+
+    try:
+
+        # Connect Python to PostgreSQL
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Insert user into database
+        cursor.execute(
+            """
+            INSERT INTO users (username, email, password)
+            VALUES (%s, %s, %s)
+            """,
+            (username, email, hashed_password)
+        )
+
+        conn.commit()
+
+        flash("Registration successful!", "success")
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        app.logger.exception("Registration failed")
+        flash(
+            "Registration failed. Check your database connection or email.",
+            "error"
+        )
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+    return redirect("/")
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000, debug=True)
